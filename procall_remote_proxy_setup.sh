@@ -202,7 +202,7 @@ while [[ $varDomainRecordOK = "false" ]]; do
     if [[ $varDomain = "" ]]; then
 
         while [[ $varDomain = "" ]]; do
-            echo "Bitte die gewünschte smartcollab.ch Subdomain eingeben:"
+            echo "Bitte den gewünschte FQDN eingeben (Bspw. procall.musterag.ch):"
             read -r varDomain
             CheckDomainRecord "$varDomain" "$MyPublicIP"
         done
