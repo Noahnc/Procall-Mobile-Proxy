@@ -4,33 +4,58 @@
 ####################################### CoppyRight by Noah Canadea ###########################################
 ##############################################################################################################
 
+# Beende das Script sollte ein Fehler auftreten
+#set -euo pipefail
+
+OK() {
+    echo -e "\e[32m$1\e[39m"
+}
+
+error() {
+    echo -e "\e[31m
+Fehler beim ausführen des Scripts, folgender Vorgang ist fehlgeschlagen:
+$1
+Bitte prüfe den Log-Output.\e[39m"
+    rm -r "$ScriptFolderPath"
+    exit 1
+}
+
+CheckDomainRecord() {
+
+    # Variable zurücksetzen auf default
+    varDomainRecordOK="true"
+
+    # Prüfen ob ein A Record gefunden wird, wenn nein wird auf false gesetzt
+    host -t a "${1}" | grep "has address" >/dev/null || {
+        varDomainRecordOK="false"
+        echo -e "\e[31mDie Für ${1} wurde leider kein DNS A Record gefunden\e[39m"
+    }
+
+    if [[ $varDomainRecordOK = "true" ]]; then
+        varDomainRecordIP=$(host -t a "${1}" | grep "address" | cut -d" " -f4)
+        if [[ "$varDomainRecordIP" = "${2}" ]]; then
+            varDomainRecordOK="true"
+        else
+            varDomainRecordOK="false"
+            echo -e "\e[31mDie Domain ${1} verweist nicht auf die IP ${2}, sondern auf $varDomainRecordIP\e[39m"
+            echo -e "\e[31mPrüfe den DNS Record und die Public IP und versuche es nochmals!\e[39m"
+        fi
+    fi
+
+}
+
 RequestCertificate() {
     # Requestet das Zertifikat von LetsEncrypt und erstellt einen Cron job für die erneuerung
     varDomain="$1"
 
-    certbot certonly --standalone -d "$varDomain" --non-interactive --agree-tos -m support@btcjost.ch
-}
-
-InstallCertbot() {
-    # Installiert den Certbot für die LetsEncrypt Zertifikatsanforderung
-
-    apt-get install certbot -y
-
-}
-
-InstallUFW() {
-    # Installiert die UFW Firewall
-
-    apt-get install ufw -y
-
+    certbot certonly --standalone -d "$varDomain" --non-interactive --agree-tos -m support@btcjost.ch || error "Beantragen des Zertifikats für $varDomain über LetsEncrypt fehlgeschlagen"
 }
 
 ConfigureCertbot() {
     # Erstellt die befehle, das vor der erneuerung des Zertifikats der Nginx gestopt wird.
 
     varDomain="$1"
-    echo "pre_hook = service nginx stop" >>"/etc/letsencrypt/renewal/$varDomain.conf"
-    echo "post_hook = service nginx start" >>"/etc/letsencrypt/renewal/$varDomain.conf"
+    echo "post_hook = service nginx restart" >>"/etc/letsencrypt/renewal/$varDomain.conf"
 
 }
 
@@ -38,14 +63,14 @@ InstallNginx() {
 
     # Installiert den
     if ! [ -x "$(command -v nginx)" ]; then
-        apt-get install nginx -y
+        apt-get install nginx -y || error "Installation des nginx proxy fehlgeschlagen"
     fi
 
     if ! [[ -f "/etc/ssl/certs/dhparam.pem" ]]; then
         echo "###############################################################################################"
         echo "Diffie-Hellman Schlüssel wird generiert, dies kann je nach Systemleistung bis zu 30min dauern!"
         echo "###############################################################################################"
-        cd /etc/ssl/certs && openssl dhparam -out dhparam.pem 4096
+        cd /etc/ssl/certs && openssl dhparam -out dhparam.pem 4096 || error "Generieren der DH Parameter fehlgeschlagen"
     fi
 
     if [[ -f "/etc/nginx/sites-enabled/default" ]]; then
@@ -113,6 +138,7 @@ EOF
 
 ########################################## Script entry point ################################################
 
+MyPublicIP=$(curl ipinfo.io/ip)
 DependenciesOK=
 varCertPEM=
 varChainPEM=
@@ -121,17 +147,19 @@ varDomain=
 varUCServerIP=
 varCertbotDependencysOK=
 varLetsEncrypt=
+varContentValid=
 varHTTPsPort=
 varFullChainPath=
 varKeyPath=
+ScriptFolderPath="$(dirname -- "$0")"
 
-echo "
-                  _____               _               _     _         
-                 |___ /  _____  __   | |__  _   _    | |__ | |_ ___   
-                   |_ \ / __\ \/ /   | '_ \| | | |   | '_ \| __/ __|  
-                  ___) | (__ >  <    | |_) | |_| |   | |_) | || (__ _ 
-                 |____/ \___/_/\_\   |_.__/ \__, |   |_.__/ \__\___(_)
-                                            |___/  
+echo -e " \e[34m
+ ____             ____      _ _       _                 _     _         
+|  _ \ _ __ ___  / ___|__ _| | |     | |__  _   _      | |__ | |_ ___   
+| |_) | '__/ _ \| |   / _  | | |     | '_ \| | | |     | '_ \| __/ __|  
+|  __/| | | (_) | |__| (_| | | |     | |_) | |_| |     | |_) | || (__ _ 
+|_|   |_|  \___/ \____\__,_|_|_|     |_.__/ \__, |     |_.__/ \__\___(_)
+                                            |___/
 ____________________________________________________________________________________________
 
 Dies ist das Setup Script für den btc ProCall Mobile Remote Proyx.
@@ -140,6 +168,7 @@ Bitte stelle sicher, das folgende Bedingungen erfüllt sind:
 - Dieser Server ist über eine public IP über 80/443 oder einen anderen HTTPs Port erreichbar.
 - Ein DNS A Record verweist auf die public IP dieses Servers.
 - Dieser Server kann den Business CTI Server über TCP 7775 erreichen
+\e[39m
 "
 
 # Auslesen ob alle Bedingungen erfüllt sind
@@ -150,17 +179,53 @@ done
 # Script beenden, wenn nicht alle Bedingungen OK
 if [[ $DependenciesOK == "n" ]]; then
     echo "Bitte sorg dafür dass alle Bedingunen erfüllt sind und starte dann das Script erneut, bis bald."
+    rm -r "$ScriptFolderPath"
     exit
 fi
 
-# Domain Auslesen
-while [[ $varDomain = "" ]]; do
-    read -r -p "Bitte die gewünschte Domain eingeben: " varDomain
+varContentValid="false"
+while [[ $varContentValid = "false" ]]; do
+    echo "Folgende public IP wurde erkannt, drücke Enter wenn diese korrekt ist oder passe sie manuell an:"
+    read -r -e -i "$MyPublicIP" MyPublicIP
+    if ! [[ $MyPublicIP =~ [^0-9.] ]]; then
+        varContentValid="true"
+    else
+        echo -e "\e[31mKeine gültige Eingabe!\e[39m"
+    fi
+
 done
 
-# UCServer IP auslesen
-while [[ $varUCServerIP = "" ]]; do
-    read -r -p "Bitte die IP des UCServer eingeben: " varUCServerIP
+varDomainRecordOK="false"
+
+while [[ $varDomainRecordOK = "false" ]]; do
+
+    if [[ $varDomain = "" ]]; then
+
+        while [[ $varDomain = "" ]]; do
+            echo "Bitte die gewünschte smartcollab.ch Subdomain eingeben:"
+            read -r varDomain
+            CheckDomainRecord "$varDomain" "$MyPublicIP"
+        done
+
+    else
+
+        echo "Bitte die gewünschte smartcollab.ch Subdomain eingeben:"
+        read -r -e -i "$varDomain" varDomain
+        CheckDomainRecord "$varDomain" "$MyPublicIP"
+    fi
+
+done
+
+varContentValid="false"
+while [[ $varContentValid = "false" ]]; do
+    echo "Folgende public IP wurde erkannt, drücke Enter wenn diese korrekt ist oder passe sie manuell an:"
+    read -r -e -i "$varUCServerIP" varUCServerIP
+    if ! [[ $varUCServerIP =~ [^0-9.] ]]; then
+        varContentValid="true"
+    else
+        echo -e "\e[31mKeine gültige Eingabe!\e[39m"
+    fi
+
 done
 
 # Auslesen ob das Zertifikat manuell oder automatisch per LetsEncrypt angelegt werden soll.
@@ -176,8 +241,7 @@ if [[ $varLetsEncrypt == "j" ]]; then
     done
 
     if [[ $varCertbotDependencysOK == "n" ]]; then
-        echo "Öffne entweder die Ports 80/443 oder wähle die manuelle Zertifikatsverwaltung."
-        exit
+        error "Öffne entweder die Ports 80/443 oder wähle die manuelle Zertifikatsverwaltung."
     fi
 
     varHTTPsPort="443"
@@ -230,7 +294,7 @@ sleep 5
 
 # UFW Firewall installieren fals noch nicht installiert.
 if ! [ -x "$(command -v ufw)" ]; then
-    apt-get install ufw
+    apt-get install ufw || error "Installation der UFW Firewall fehlgeschlagen"
 fi
 
 # UFW default Policys erstellen
@@ -242,7 +306,7 @@ if [[ $varLetsEncrypt == "j" ]]; then
 
     # Certbot installieren falls noch nicht installiert
     if ! [ -x "$(command -v certbot)" ]; then
-        InstallCertbot
+        apt-get install certbot -y || error "Installation von Certbot fehlgeschlagen"
     fi
 
     # Zertifikat beantragen
@@ -262,18 +326,17 @@ fi
 if [[ $varLetsEncrypt == "n" ]]; then
 
     # Verzeichniss für Zertifikate erstellen und Fullchain erstellen
-    mkdir -p /etc/ssl/ProCallProxyCerts
-    cat >/etc/ssl/ProCallProxyCerts/Fullchain.pem <<EOF
+    cat >/etc/ssl/certs/ProCallFullchain.pem <<EOF
 $varCertPEM
 $varChainPEM
 EOF
 
-    cat >/etc/ssl/ProCallProxyCerts/Key.pem <<EOF
+    cat >/etc/ssl/private/ProCallKey.pem <<EOF
 $varKeyPEM
 EOF
 
-    varFullChainPath="/etc/ssl/ProCallProxyCerts/Fullchain.pem"
-    varKeyPath="/etc/ssl/ProCallProxyCerts/Key.pem"
+    varFullChainPath="/etc/ssl/certs/ProCallFullchain.pem"
+    varKeyPath="/etc/ssl/private/ProCallKey.pem"
     ufw allow $varHTTPsPort
 
 fi
