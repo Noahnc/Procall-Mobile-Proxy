@@ -199,27 +199,18 @@ varDomainRecordOK="false"
 
 while [[ $varDomainRecordOK = "false" ]]; do
 
-    if [[ $varDomain = "" ]]; then
-
         while [[ $varDomain = "" ]]; do
             echo "Bitte den gewünschte FQDN eingeben (Bspw. procall.musterag.ch):"
-            read -r varDomain
+            read -r -e -i "$varDomain" varDomain
             CheckDomainRecord "$varDomain" "$MyPublicIP"
         done
-
-    else
-
-        echo "Bitte die gewünschte smartcollab.ch Subdomain eingeben:"
-        read -r -e -i "$varDomain" varDomain
-        CheckDomainRecord "$varDomain" "$MyPublicIP"
-    fi
 
 done
 
 varContentValid="false"
 while [[ $varContentValid = "false" ]]; do
-    echo "Folgende public IP wurde erkannt, drücke Enter wenn diese korrekt ist oder passe sie manuell an:"
-    read -r -e -i "$varUCServerIP" varUCServerIP
+    echo "Gib die IP des UCServers ein"
+    read -r -e -i "$varUCServerIP"
     if ! [[ $varUCServerIP =~ [^0-9.] ]]; then
         varContentValid="true"
     else
