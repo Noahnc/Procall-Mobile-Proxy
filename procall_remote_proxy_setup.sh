@@ -20,6 +20,45 @@ Bitte prüfe den Log-Output.\e[39m"
     exit 1
 }
 
+CreateLoginBanner() {
+
+  if [[ -f "/etc/motd" ]]; then
+    rm /etc/motd
+  fi
+  if [[ -f "/etc/update-motd.d/10-uname" ]]; then
+    rm /etc/update-motd.d/10-uname
+  fi
+
+  # Erstelle das Logo
+  cat >/etc/update-motd.d/10logo <<EOF
+#!/bin/bash
+echo -e " \e[34m
+  _____               _               _     _         
+ |___ /  _____  __   | |__  _   _    | |__ | |_ ___   
+   |_ \ / __\ \/ /   | '_ \| | | |   | '_ \| __/ __|  
+  ___) | (__ >  <    | |_) | |_| |   | |_) | || (__ _ 
+ |____/ \___/_/\_\   |_.__/ \__, |   |_.__/ \__\___(_)
+                            |___/  
+__________________________________________________________\e[39m"        
+EOF
+
+  # Erstelle den System Info Text
+  cat >/etc/update-motd.d/20infobanner <<EOF
+#!/bin/bash
+echo -e " \e[34m
+Domain:        https://$varDomain
+Datum:         \$( date )
+OS:            \$( lsb_release -a 2>&1 | grep  'Description' | cut -f2 )
+Uptime:        \$( uptime -p )
+\e[39m
+"        
+EOF
+
+  # Neu erstellte Banner ausführbar machen
+  chmod a+x /etc/update-motd.d/*
+
+}
+
 CheckDomainRecord() {
 
     # Variable zurücksetzen auf default
@@ -210,7 +249,7 @@ done
 varContentValid="false"
 while [[ $varContentValid = "false" ]]; do
     echo "Gib die IP des UCServers ein"
-    read -r -e -i "$varUCServerIP"
+    read -r varUCServerIP
     if ! [[ $varUCServerIP =~ [^0-9.] ]]; then
         varContentValid="true"
     else
@@ -339,6 +378,8 @@ CreatenginxConfig "$varDomain" "$varHTTPsPort" "$varUCServerIP" "$varFullChainPa
 
 # Aktivieren der Firewall
 yes | ufw enable
+
+CreateLoginBanner
 
 # Nginx proxy neustarten
 service nginx restart
