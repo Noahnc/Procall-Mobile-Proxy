@@ -58,15 +58,15 @@ Bitte prüfe den Log-Output.\e[39m"
 
 CreateLoginBanner() {
 
-    if [[ -f "/etc/motd" ]]; then
-        rm /etc/motd
-    fi
-    if [[ -f "/etc/update-motd.d/10-uname" ]]; then
-        rm /etc/update-motd.d/10-uname
-    fi
+
+        rm -f /etc/motd
+        rm -f /etc/update-motd.d/10-uname
+        rm -f /etc/update-motd.d/00-header
+        rm -f /etc/update-motd.d/10-help-text
+
 
     # Erstelle das Logo
-    cat >/etc/update-motd.d/10logo <<EOF
+    cat >/etc/update-motd.d/00-logo <<EOF
 #!/bin/bash
 echo -e " \e[34m
  ____             ____      _ _       _                 _     _         
@@ -79,7 +79,7 @@ ________________________________________________________________________\e[39m"
 EOF
 
     # Erstelle den System Info Text
-    cat >/etc/update-motd.d/20infobanner <<EOF
+    cat >/etc/update-motd.d/01-infobanner <<EOF
 #!/bin/bash
 echo -e " \e[34m
 Domain:        https://$1:$2
@@ -103,8 +103,7 @@ CreateConfigFile() {
     cat >/etc/btc/procall_mobile_proxy.conf <<EOF
 Domain:$1
 HTTPsPort:$2
-LetsEncrypt:$3
-"        
+LetsEncrypt:$3     
 EOF
 
 }
@@ -269,13 +268,9 @@ done
 varDomainRecordOK="false"
 
 while [[ $varDomainRecordOK = "false" ]]; do
-
-    while [[ $varDomain = "" ]]; do
-        echo "Bitte den gewünschte FQDN eingeben (Bspw. procall.musterag.ch):"
-        read -r -e -i "$varDomain" varDomain
-        CheckDomainRecord "$varDomain" "$MyPublicIP"
-    done
-
+    echo "Bitte den gewünschte FQDN eingeben (Bspw. procall.musterag.ch):"
+    read -r -e -i "$varDomain" varDomain
+    CheckDomainRecord "$varDomain" "$MyPublicIP"
 done
 
 varContentValid="false"
