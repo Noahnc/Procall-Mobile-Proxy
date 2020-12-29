@@ -1,11 +1,45 @@
 #!/bin/bash
 
-##############################################################################################################
-####################################### CoppyRight by Noah Canadea ###########################################
-##############################################################################################################
+########################################################################
+#         Copyright © by Noah Canadea | All rights reserved
+########################################################################
+#                           Description
+#        Aufsetzen eines ProCall Mobile Service reverse Proxy
+#
+#                    Version 1.0 | 29.12.2020
+
+# Global variables
+MyPublicIP=$(curl ipinfo.io/ip)
+DependenciesOK=
+varCertPEM=
+varChainPEM=
+varKeyPEM=
+varDomain=
+varUCServerIP=
+varCertbotDependencysOK=
+varLetsEncrypt=
+varContentValid=
+varHTTPsPort=
+varFullChainPath=
+varKeyPath=
+ScriptFolderPath="$(dirname -- "$0")"
+ProjectFolderName="smartcollab-3cx"
 
 # Beende das Script sollte ein Fehler auftreten
-#set -euo pipefail
+set -euo pipefail
+
+# Auffangen des Shell Terminator
+trap ctrl_c INT
+
+function ctrl_c() {
+    echo ""
+    echo -e "\e[31mAusführung des Script wurde abgebrochen.\e[39m"
+
+    if [[ $ScriptFolderPath = *"$ProjectFolderName" ]]; then
+        rm -r "$ScriptFolderPath"
+    fi
+    exit 1
+}
 
 OK() {
     echo -e "\e[32m$1\e[39m"
@@ -16,37 +50,40 @@ error() {
 Fehler beim ausführen des Scripts, folgender Vorgang ist fehlgeschlagen:
 $1
 Bitte prüfe den Log-Output.\e[39m"
-    rm -r "$ScriptFolderPath"
+    if [[ $ScriptFolderPath = *"$ProjectFolderName" ]]; then
+        rm -r "$ScriptFolderPath"
+    fi
     exit 1
 }
 
 CreateLoginBanner() {
 
-  if [[ -f "/etc/motd" ]]; then
-    rm /etc/motd
-  fi
-  if [[ -f "/etc/update-motd.d/10-uname" ]]; then
-    rm /etc/update-motd.d/10-uname
-  fi
+    if [[ -f "/etc/motd" ]]; then
+        rm /etc/motd
+    fi
+    if [[ -f "/etc/update-motd.d/10-uname" ]]; then
+        rm /etc/update-motd.d/10-uname
+    fi
 
-  # Erstelle das Logo
-  cat >/etc/update-motd.d/10logo <<EOF
+    # Erstelle das Logo
+    cat >/etc/update-motd.d/10logo <<EOF
 #!/bin/bash
 echo -e " \e[34m
-  _____               _               _     _         
- |___ /  _____  __   | |__  _   _    | |__ | |_ ___   
-   |_ \ / __\ \/ /   | '_ \| | | |   | '_ \| __/ __|  
-  ___) | (__ >  <    | |_) | |_| |   | |_) | || (__ _ 
- |____/ \___/_/\_\   |_.__/ \__, |   |_.__/ \__\___(_)
-                            |___/  
-__________________________________________________________\e[39m"        
+ ____             ____      _ _       _                 _     _         
+|  _ \ _ __ ___  / ___|__ _| | |     | |__  _   _      | |__ | |_ ___   
+| |_) | '__/ _ \| |   / _  | | |     | '_ \| | | |     | '_ \| __/ __|  
+|  __/| | | (_) | |__| (_| | | |     | |_) | |_| |     | |_) | || (__ _ 
+|_|   |_|  \___/ \____\__,_|_|_|     |_.__/ \__, |     |_.__/ \__\___(_)
+                                            |___/
+________________________________________________________________________\e[39m"        
 EOF
 
-  # Erstelle den System Info Text
-  cat >/etc/update-motd.d/20infobanner <<EOF
+    # Erstelle den System Info Text
+    cat >/etc/update-motd.d/20infobanner <<EOF
 #!/bin/bash
 echo -e " \e[34m
-Domain:        https://$varDomain
+Domain:        https://$1:$2
+Zertifikat:    $3
 Datum:         \$( date )
 OS:            \$( lsb_release -a 2>&1 | grep  'Description' | cut -f2 )
 Uptime:        \$( uptime -p )
@@ -54,8 +91,21 @@ Uptime:        \$( uptime -p )
 "        
 EOF
 
-  # Neu erstellte Banner ausführbar machen
-  chmod a+x /etc/update-motd.d/*
+    # Neu erstellte Banner ausführbar machen
+    chmod a+x /etc/update-motd.d/*
+
+}
+
+CreateConfigFile() {
+
+    mkdir -p /etc/btc
+    # Erstelle den System Info Text
+    cat >/etc/btc/procall_mobile_proxy.conf <<EOF
+Domain:$1
+HTTPsPort:$2
+LetsEncrypt:$3
+"        
+EOF
 
 }
 
@@ -120,16 +170,11 @@ InstallNginx() {
 
 CreatenginxConfig() {
     # Erstellt den nginx proxy virtual Host
-    varDomain="$1"
-    varPort="$2"
-    varUCServerIP="$3"
-    varFullChainPath="$4"
-    varKeyPath="$5"
 
     cat >/etc/nginx/sites-enabled/"$varDomain" <<EOF
 server {
-  listen       $varPort ssl;
-  server_name  $varDomain;
+  listen       $2 ssl;
+  server_name  $1;
 
   # Hinzufügen diverser security Header
   add_header Strict-Transport-Security "max-age=31536000; preload" always;
@@ -143,8 +188,8 @@ server {
   ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
   
   # SSL Private-Key & Public-Key
-  ssl_certificate $varFullChainPath;
-  ssl_certificate_key $varKeyPath;
+  ssl_certificate $4;
+  ssl_certificate_key $5;
 
   # DHparam für Verschlüsselung
   ssl_dhparam /etc/ssl/certs/dhparam.pem;
@@ -159,13 +204,13 @@ server {
     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     proxy_set_header Host \$http_host;
     proxy_set_header X-NginX-Proxy true;
-    proxy_pass http://$varUCServerIP:7772;
+    proxy_pass http://$3:7224;
     proxy_redirect off;
   }
 
   # Proxy Location für Websocket
   location /ws/client/websocket {
-    proxy_pass http://$varUCServerIP:7772;
+    proxy_pass http://$3:7224;
     proxy_http_version 1.1;
     proxy_set_header Upgrade \$http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -176,21 +221,6 @@ EOF
 }
 
 ########################################## Script entry point ################################################
-
-MyPublicIP=$(curl ipinfo.io/ip)
-DependenciesOK=
-varCertPEM=
-varChainPEM=
-varKeyPEM=
-varDomain=
-varUCServerIP=
-varCertbotDependencysOK=
-varLetsEncrypt=
-varContentValid=
-varHTTPsPort=
-varFullChainPath=
-varKeyPath=
-ScriptFolderPath="$(dirname -- "$0")"
 
 echo -e " \e[34m
  ____             ____      _ _       _                 _     _         
@@ -206,7 +236,7 @@ Dies ist das Setup Script für den btc ProCall Mobile Remote Proyx.
 Bitte stelle sicher, das folgende Bedingungen erfüllt sind:
 - Dieser Server ist über eine public IP über 80/443 oder einen anderen HTTPs Port erreichbar.
 - Ein DNS A Record verweist auf die public IP dieses Servers.
-- Dieser Server kann den Business CTI Server über TCP 7775 erreichen
+- Dieser Server kann den Business CTI Server über TCP 7224 erreichen
 \e[39m
 "
 
@@ -218,7 +248,9 @@ done
 # Script beenden, wenn nicht alle Bedingungen OK
 if [[ $DependenciesOK == "n" ]]; then
     echo "Bitte sorg dafür dass alle Bedingunen erfüllt sind und starte dann das Script erneut, bis bald."
-    rm -r "$ScriptFolderPath"
+    if [[ $ScriptFolderPath = *"$ProjectFolderName" ]]; then
+        rm -r "$ScriptFolderPath"
+    fi
     exit
 fi
 
@@ -238,11 +270,11 @@ varDomainRecordOK="false"
 
 while [[ $varDomainRecordOK = "false" ]]; do
 
-        while [[ $varDomain = "" ]]; do
-            echo "Bitte den gewünschte FQDN eingeben (Bspw. procall.musterag.ch):"
-            read -r -e -i "$varDomain" varDomain
-            CheckDomainRecord "$varDomain" "$MyPublicIP"
-        done
+    while [[ $varDomain = "" ]]; do
+        echo "Bitte den gewünschte FQDN eingeben (Bspw. procall.musterag.ch):"
+        read -r -e -i "$varDomain" varDomain
+        CheckDomainRecord "$varDomain" "$MyPublicIP"
+    done
 
 done
 
@@ -351,6 +383,9 @@ if [[ $varLetsEncrypt == "j" ]]; then
     ufw allow 80
     ufw allow 443
 
+    CreateLoginBanner "$varDomain" "$varHTTPsPort" "LetsEncrypt"
+    CreateConfigFile "$varDomain" "$varHTTPsPort" "true"
+
 fi
 
 if [[ $varLetsEncrypt == "n" ]]; then
@@ -368,6 +403,8 @@ EOF
     varFullChainPath="/etc/ssl/certs/ProCallFullchain.pem"
     varKeyPath="/etc/ssl/private/ProCallKey.pem"
     ufw allow $varHTTPsPort
+    CreateLoginBanner "$varDomain" "$varHTTPsPort" "Manuell"
+    CreateConfigFile "$varDomain" "$varHTTPsPort" "false"
 
 fi
 
@@ -378,8 +415,6 @@ CreatenginxConfig "$varDomain" "$varHTTPsPort" "$varUCServerIP" "$varFullChainPa
 
 # Aktivieren der Firewall
 yes | ufw enable
-
-CreateLoginBanner
 
 # Nginx proxy neustarten
 service nginx restart
