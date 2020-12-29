@@ -23,7 +23,7 @@ varHTTPsPort=
 varFullChainPath=
 varKeyPath=
 ScriptFolderPath="$(dirname -- "$0")"
-ProjectFolderName="smartcollab-3cx"
+ProjectFolderName="Procall-Mobile-Proxy"
 
 # Beende das Script sollte ein Fehler auftreten
 set -euo pipefail
