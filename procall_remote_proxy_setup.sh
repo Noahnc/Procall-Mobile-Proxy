@@ -58,12 +58,10 @@ Bitte prüfe den Log-Output.\e[39m"
 
 CreateLoginBanner() {
 
-
-        rm -f /etc/motd
-        rm -f /etc/update-motd.d/10-uname
-        rm -f /etc/update-motd.d/00-header
-        rm -f /etc/update-motd.d/10-help-text
-
+    rm -f /etc/motd
+    rm -f /etc/update-motd.d/10-uname
+    rm -f /etc/update-motd.d/00-header
+    rm -f /etc/update-motd.d/10-help-text
 
     # Erstelle das Logo
     cat >/etc/update-motd.d/00-logo <<EOF
@@ -94,6 +92,8 @@ EOF
     # Neu erstellte Banner ausführbar machen
     chmod a+x /etc/update-motd.d/*
 
+    OK "Login Banner wurde erfolgreich erstellt"
+
 }
 
 CreateConfigFile() {
@@ -106,6 +106,7 @@ HTTPsPort:$2
 LetsEncrypt:$3     
 EOF
 
+    OK "Konfigfile wurde in /etc/btc/procall_mobile_proxy.conf angelegt"
 }
 
 CheckDomainRecord() {
@@ -137,6 +138,8 @@ RequestCertificate() {
     varDomain="$1"
 
     certbot certonly --standalone -d "$varDomain" --non-interactive --agree-tos -m support@btcjost.ch || error "Beantragen des Zertifikats für $varDomain über LetsEncrypt fehlgeschlagen"
+
+    OK "Zertifikat wurde beantragt und gespeichert"
 }
 
 ConfigureCertbot() {
@@ -145,6 +148,7 @@ ConfigureCertbot() {
     varDomain="$1"
     echo "post_hook = service nginx restart" >>"/etc/letsencrypt/renewal/$varDomain.conf" || error "Post-Hook für $varDomain konnte nicht hinzugefügt werden"
 
+    OK "Post-Hook wurde erfolgreich angelegt"
 }
 
 InstallNginx() {
@@ -154,16 +158,17 @@ InstallNginx() {
         apt-get install nginx -y || error "Installation des nginx proxy fehlgeschlagen"
     fi
 
+    OK "Nginx wurde erfolgreich installiert"
+
     if ! [[ -f "/etc/ssl/certs/dhparam.pem" ]]; then
         echo "###############################################################################################"
         echo "Diffie-Hellman Schlüssel wird generiert, dies kann je nach Systemleistung bis zu 30min dauern!"
         echo "###############################################################################################"
         cd /etc/ssl/certs && openssl dhparam -out dhparam.pem 4096 || error "Generieren der DH Parameter fehlgeschlagen"
     fi
+    OK "DH Schlüssel wurde generiert und unter /etc/ssl/certs gespeichert"
 
-    if [[ -f "/etc/nginx/sites-enabled/default" ]]; then
-        rm -f /etc/nginx/sites-enabled/default
-    fi
+    rm -f /etc/nginx/sites-enabled/default
 
 }
 
@@ -216,6 +221,8 @@ server {
   }
 }
 EOF
+
+    OK "Nginx Proxy Config erfolgreich erstellt"
 
 }
 
@@ -349,10 +356,14 @@ fi
 apt-get update
 sleep 5
 apt-get upgrade -y || error "Updates konnten nicht installiert werden"
+OK "Patches wurden installiert"
 
 # UFW Firewall installieren fals noch nicht installiert.
 if ! [ -x "$(command -v ufw)" ]; then
     apt-get install ufw || error "Installation der UFW Firewall fehlgeschlagen"
+    OK "UFW Firewall wurde erfolgreich installiert"
+else
+    OK "UFW Firewall ist bereits installiert"
 fi
 
 # UFW default Policys erstellen
@@ -365,6 +376,9 @@ if [[ $varLetsEncrypt == "j" ]]; then
     # Certbot installieren falls noch nicht installiert
     if ! [ -x "$(command -v certbot)" ]; then
         apt-get install certbot -y || error "Installation von Certbot fehlgeschlagen"
+        OK "Certbot erfolgreich installiert"
+    else
+        OK "Certbot ist bereits installiert"
     fi
 
     # Zertifikat beantragen
@@ -396,6 +410,8 @@ EOF
 $varKeyPEM
 EOF
 
+    OK "Zertifikat und Schlüssel wurden gespeichert"
+
     varFullChainPath="/etc/ssl/certs/ProCallFullchain.pem"
     varKeyPath="/etc/ssl/private/ProCallKey.pem"
     ufw allow $varHTTPsPort
@@ -413,4 +429,27 @@ CreatenginxConfig "$varDomain" "$varHTTPsPort" "$varUCServerIP" "$varFullChainPa
 yes | ufw enable
 
 # Nginx proxy neustarten
-service nginx restart  || error "Problem beim neustart des nginx, prüfe die nginx config!"
+service nginx restart || error "Problem beim neustart des nginx, prüfe die nginx config!"
+
+echo -e " \e[34m
+                  _____               _               _     _         
+                 |___ /  _____  __   | |__  _   _    | |__ | |_ ___   
+                   |_ \ / __\ \/ /   | '_ \| | | |   | '_ \| __/ __|  
+                  ___) | (__ >  <    | |_) | |_| |   | |_) | || (__ _ 
+                 |____/ \___/_/\_\   |_.__/ \__, |   |_.__/ \__\___(_)
+                                            |___/  
+____________________________________________________________________________________________
+
+Dein ProCall Proxy wurde erfolgreich Erstellt!
+
+Der Server ist über folgende URL erreichbar:
+URL: https://$varDomain:$varHTTPsPort
+\e[39m
+"
+
+########################################## Script end ################################################
+
+# Löschen des Script wenn fertig
+if [[ $ScriptFolderPath = *"$ProjectFolderName" ]]; then
+    rm -r "$ScriptFolderPath"
+fi
