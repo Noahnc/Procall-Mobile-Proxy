@@ -26,7 +26,7 @@ ScriptFolderPath="$(dirname -- "$0")"
 ProjectFolderName="Procall-Mobile-Proxy"
 
 # Beende das Script sollte ein Fehler auftreten
-set -euo pipefail
+#set -euo pipefail
 
 # Auffangen des Shell Terminator
 trap ctrl_c INT
@@ -143,7 +143,7 @@ ConfigureCertbot() {
     # Erstellt die befehle, das vor der erneuerung des Zertifikats der Nginx gestopt wird.
 
     varDomain="$1"
-    echo "post_hook = service nginx restart" >>"/etc/letsencrypt/renewal/$varDomain.conf"
+    echo "post_hook = service nginx restart" >>"/etc/letsencrypt/renewal/$varDomain.conf" || error "Post-Hook für $varDomain konnte nicht hinzugefügt werden"
 
 }
 
@@ -162,7 +162,7 @@ InstallNginx() {
     fi
 
     if [[ -f "/etc/nginx/sites-enabled/default" ]]; then
-        rm /etc/nginx/sites-enabled/default
+        rm -f /etc/nginx/sites-enabled/default
     fi
 
 }
@@ -345,9 +345,10 @@ if [[ $varLetsEncrypt == "n" ]]; then
 
 fi
 
-# Paketliste aktuallisieren
+# Paketliste aktuallisieren und Updaten
 apt-get update
 sleep 5
+apt-get upgrade -y || error "Updates konnten nicht installiert werden"
 
 # UFW Firewall installieren fals noch nicht installiert.
 if ! [ -x "$(command -v ufw)" ]; then
@@ -412,4 +413,4 @@ CreatenginxConfig "$varDomain" "$varHTTPsPort" "$varUCServerIP" "$varFullChainPa
 yes | ufw enable
 
 # Nginx proxy neustarten
-service nginx restart
+service nginx restart  || error "Problem beim neustart des nginx, prüfe die nginx config!"
