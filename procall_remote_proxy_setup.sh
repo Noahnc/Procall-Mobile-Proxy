@@ -41,11 +41,11 @@ function ctrl_c() {
     exit 1
 }
 
-OK() {
+function OK() {
     echo -e "\e[32m$1\e[39m"
 }
 
-error() {
+function error() {
     echo -e "\e[31m
 Fehler beim ausführen des Scripts, folgender Vorgang ist fehlgeschlagen:
 $1
@@ -56,7 +56,7 @@ Bitte prüfe den Log-Output.\e[39m"
     exit 1
 }
 
-CreateLoginBanner() {
+function CreateLoginBanner() {
 
     rm -f /etc/motd
     rm -f /etc/update-motd.d/10-uname
@@ -96,7 +96,7 @@ EOF
 
 }
 
-CreateConfigFile() {
+function CreateConfigFile() {
 
     mkdir -p /etc/btc
     # Erstelle den System Info Text
@@ -109,7 +109,7 @@ EOF
     OK "Konfigfile wurde in /etc/btc/procall_mobile_proxy.conf angelegt"
 }
 
-CheckDomainRecord() {
+function CheckDomainRecord() {
 
     # Variable zurücksetzen auf default
     varDomainRecordOK="true"
@@ -133,7 +133,7 @@ CheckDomainRecord() {
 
 }
 
-RequestCertificate() {
+function RequestCertificate() {
     # Requestet das Zertifikat von LetsEncrypt und erstellt einen Cron job für die erneuerung
     varDomain="$1"
 
@@ -142,7 +142,7 @@ RequestCertificate() {
     OK "Zertifikat wurde beantragt und gespeichert"
 }
 
-ConfigureCertbot() {
+function ConfigureCertbot() {
     # Erstellt die befehle, das vor der erneuerung des Zertifikats der Nginx gestopt wird.
 
     varDomain="$1"
@@ -151,7 +151,7 @@ ConfigureCertbot() {
     OK "Post-Hook wurde erfolgreich angelegt"
 }
 
-InstallNginx() {
+function InstallNginx() {
 
     # Installiert den
     if ! [ -x "$(command -v nginx)" ]; then
@@ -172,7 +172,7 @@ InstallNginx() {
 
 }
 
-CreatenginxConfig() {
+function CreatenginxConfig() {
     # Erstellt den nginx proxy virtual Host
 
     cat >/etc/nginx/sites-enabled/"$varDomain" <<EOF
