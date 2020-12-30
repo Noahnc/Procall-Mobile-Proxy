@@ -99,12 +99,80 @@ EOF
 function CreateConfigFile() {
 
     mkdir -p /etc/btc
-    # Erstelle den System Info Text
+    # Erstelle das Config File mit den Settings
     cat >/etc/btc/procall_mobile_proxy.conf <<EOF
 Domain:$1
 HTTPsPort:$2
 LetsEncrypt:$3     
 EOF
+
+    OK "Konfigfile wurde in /etc/btc/procall_mobile_proxy.conf angelegt"
+}
+
+function CreateCertRenewScript() {
+
+    mkdir -p /etc/btc
+    # Erstelle das renewal script
+    cat >/etc/btc/procall_mobile_proxy_cert_renewal.sh <<EOF
+#!/bin/bash
+
+function OK() {
+    echo -e "\e[32m\$1\e[39m"
+}
+
+function error() {
+    echo -e "\e[31m
+Fehler beim ausführen des Scripts, folgender Vorgang ist fehlgeschlagen:
+\$1
+Bitte prüfe den Log-Output.\e[39m"
+    exit 1
+}
+
+    echo ""
+    while [[ \$varCertPEM = "" ]]; do
+        echo "Bitte das Zertifikat als PEM einfügen (von -----BEGIN CERTIFICATE----- bis -----END CERTIFICATE-----"
+        IFS= read -r -d '' -n 1 varCertPEM
+        while IFS= read -r -d '' -n 1 -t 2 c; do
+            varCertPEM+=\$c
+        done
+
+    done
+
+    echo ""
+    while [[ \$varChainPEM = "" ]]; do
+        echo "Bitte das Zwischenzertifikat als PEM einfügen (von -----BEGIN CERTIFICATE----- bis -----END CERTIFICATE-----"
+        IFS= read -r -d '' -n 1 varChainPEM
+        while IFS= read -r -d '' -n 1 -t 2 c; do
+            varChainPEM+=\$c
+        done
+    done
+
+    echo ""
+    while [[ \$varKeyPEM = "" ]]; do
+        echo "Bitte den Key als PEM einfügen (von -----BEGIN RSA PRIVATE KEY----- bis -----END RSA PRIVATE KEY-----"
+        IFS= read -r -d '' -n 1 varKeyPEM
+        while IFS= read -r -d '' -n 1 -t 2 c; do
+            varKeyPEM+=\$c
+        done
+
+    done
+    echo ""
+
+    rm -f /etc/ssl/certs/ProCallFullchain.pem
+    rm -f /etc/ssl/private/ProCallKey.pem
+
+    echo "\$varCertPEM" >> "/etc/ssl/certs/ProCallFullchain.pem"
+    echo "\$varChainPEM" >> "/etc/ssl/certs/ProCallFullchain.pem"
+    echo "\$varKeyPEM" >> "/etc/ssl/private/ProCallKey.pem"
+
+
+    service nginx restart || error "Fehler beim neustart des Proxy und aktivieren der Zertifikate"
+
+    OK "Zertifikate gespeichert und nginx neu gestartet"
+
+EOF
+
+    chmod +x /etc/btc/procall_mobile_proxy_cert_renewal.sh
 
     OK "Konfigfile wurde in /etc/btc/procall_mobile_proxy.conf angelegt"
 }
@@ -449,6 +517,10 @@ Der Server ist über folgende URL erreichbar:
 URL: https://$varDomain:$varHTTPsPort
 \e[39m
 "
+
+if [[ $varLetsEncrypt == "n" ]]; then
+echo -e " \e[34m Mit folgendem Befehl kannst du ein Zertifikat erneuern: sudo /etc/btc/procall_mobile_proxy_cert_renewal.sh\e[39m"
+fi
 
 ########################################## Script end ################################################
 
